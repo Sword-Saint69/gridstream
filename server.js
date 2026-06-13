@@ -4,66 +4,101 @@ process.on('uncaughtException',  err => console.error('[uncaughtException]', err
 process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
 
 const express     = require('express');
-const Database    = require('better-sqlite3');
 const http        = require('http');
 const https       = require('https');
 const path        = require('path');
+const fs          = require('fs');
 const compression = require('compression');
 
-const PORT    = process.env.PORT || 8085;
-const DB_FILE = path.join(__dirname, 'gridstream.db');
+const PORT     = process.env.PORT || 8085;
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const DB_FILE  = path.join(DATA_DIR, 'gridstream.json');
 
-// ── Database ──────────────────────────────────────────────────────────────────
+// ── JSON Storage ──────────────────────────────────────────────────────────────
 
-const db = new Database(DB_FILE);
-db.exec(`
-    CREATE TABLE IF NOT EXISTS playlists (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        name       TEXT NOT NULL,
-        epg_url    TEXT DEFAULT '',
-        created_at INTEGER DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE IF NOT EXISTS channels (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        name        TEXT NOT NULL,
-        url         TEXT NOT NULL,
-        logo        TEXT DEFAULT '',
-        group_name  TEXT DEFAULT 'General',
-        tvg_id      TEXT DEFAULT '',
-        playlist_id INTEGER REFERENCES playlists(id) ON DELETE CASCADE
-    );
-`);
+let _db = null;
 
-// Safe migrations for existing DBs
-for (const sql of [
-    `ALTER TABLE channels ADD COLUMN tvg_id TEXT DEFAULT ''`,
-    `ALTER TABLE channels ADD COLUMN playlist_id INTEGER`,
-]) { try { db.exec(sql); } catch (_) {} }
+function readDB() {
+    if (_db) return _db;
+    try {
+        _db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    } catch (_) {
+        _db = { playlists: [{ id: 1, name: 'Default', epg_url: '' }], channels: [], _nextPl: 2, _nextCh: 1 };
+    }
+    return _db;
+}
 
-// Ensure a Default playlist exists and adopt orphan channels
-db.exec(`INSERT OR IGNORE INTO playlists (id, name) VALUES (1, 'Default')`);
-db.exec(`UPDATE channels SET playlist_id = 1 WHERE playlist_id IS NULL`);
+function writeDB() {
+    fs.writeFileSync(DB_FILE, JSON.stringify(_db, null, 2));
+}
 
-const stmt = {
-    allChannels:    db.prepare(`SELECT id, name, url, logo, group_name AS "group", tvg_id, playlist_id FROM channels ORDER BY id ASC`),
-    channelsByList: db.prepare(`SELECT id, name, url, logo, group_name AS "group", tvg_id, playlist_id FROM channels WHERE playlist_id = ? ORDER BY id ASC`),
-    insertChannel:  db.prepare(`INSERT INTO channels (name, url, logo, group_name, tvg_id, playlist_id) VALUES (?, ?, ?, ?, ?, ?)`),
-    updateChannel:  db.prepare(`UPDATE channels SET name=?, url=?, logo=?, group_name=?, tvg_id=? WHERE id=?`),
-    deleteChannel:  db.prepare(`DELETE FROM channels WHERE id=?`),
-    clearPlaylist:  db.prepare(`DELETE FROM channels WHERE playlist_id=?`),
-    allPlaylists:   db.prepare(`SELECT id, name, epg_url FROM playlists ORDER BY id ASC`),
-    insertPlaylist: db.prepare(`INSERT INTO playlists (name, epg_url) VALUES (?, ?)`),
-    deletePlaylist: db.prepare(`DELETE FROM playlists WHERE id=?`),
-    renamePlaylist: db.prepare(`UPDATE playlists SET name=? WHERE id=?`),
-};
+function getDB() {
+    return readDB();
+}
+
+function getChannels(playlistId) {
+    const db = getDB();
+    return playlistId
+        ? db.channels.filter(c => c.playlist_id === +playlistId)
+        : db.channels;
+}
 
 function saveChannels(channels, playlistId, append) {
-    const tx = db.transaction((chs) => {
-        if (!append) stmt.clearPlaylist.run(playlistId);
-        for (const ch of chs)
-            stmt.insertChannel.run(ch.name, ch.url, ch.logo || '', ch.group || 'General', ch.tvg_id || '', playlistId);
-    });
-    tx(channels);
+    const db = getDB();
+    if (!append) db.channels = db.channels.filter(c => c.playlist_id !== +playlistId);
+    for (const ch of channels) {
+        db.channels.push({
+            id: db._nextCh++,
+            name: ch.name,
+            url: ch.url,
+            logo: ch.logo || '',
+            group: ch.group || 'General',
+            tvg_id: ch.tvg_id || '',
+            playlist_id: +playlistId
+        });
+    }
+    writeDB();
+}
+
+function getPlaylists() { return getDB().playlists; }
+
+function addPlaylist(name, epg_url = '') {
+    const db = getDB();
+    const pl = { id: db._nextPl++, name, epg_url };
+    db.playlists.push(pl);
+    writeDB();
+    return pl;
+}
+
+function deletePlaylist(id) {
+    const db = getDB();
+    db.playlists  = db.playlists.filter(p => p.id !== +id);
+    db.channels   = db.channels.filter(c => c.playlist_id !== +id);
+    writeDB();
+}
+
+function renamePlaylist(id, name) {
+    const db = getDB();
+    const pl = db.playlists.find(p => p.id === +id);
+    if (pl) { pl.name = name; writeDB(); }
+}
+
+function updatePlaylistEpg(id, epg_url) {
+    const db = getDB();
+    const pl = db.playlists.find(p => p.id === +id);
+    if (pl) { pl.epg_url = epg_url; writeDB(); }
+}
+
+function deleteChannel(id) {
+    const db = getDB();
+    db.channels = db.channels.filter(c => c.id !== +id);
+    writeDB();
+}
+
+function updateChannel(id, fields) {
+    const db = getDB();
+    const ch = db.channels.find(c => c.id === +id);
+    if (ch) { Object.assign(ch, fields); writeDB(); }
 }
 
 // ── M3U Parser ────────────────────────────────────────────────────────────────
@@ -334,43 +369,39 @@ app.post('/api/latency', async (req, res) => {
 
 // ── Playlists API ─────────────────────────────────────────────────────────────
 
-app.get('/api/playlists', (req, res) => res.json(stmt.allPlaylists.all()));
+app.get('/api/playlists', (req, res) => res.json(getPlaylists()));
 
 app.post('/api/playlists', (req, res) => {
     const { name = 'New Playlist', epg_url = '' } = req.body || {};
-    const info = stmt.insertPlaylist.run(name, epg_url);
-    res.json({ id: info.lastInsertRowid, name, epg_url });
+    res.json(addPlaylist(name, epg_url));
 });
 
 app.put('/api/playlists/:id', (req, res) => {
     const { name } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name required' });
-    stmt.renamePlaylist.run(name, req.params.id);
+    renamePlaylist(req.params.id, name);
     res.json({ ok: true });
 });
 
 app.delete('/api/playlists/:id', (req, res) => {
-    if (req.params.id == 1) return res.status(400).json({ error: 'Cannot delete Default playlist' });
-    stmt.deletePlaylist.run(req.params.id);
+    if (+req.params.id === 1) return res.status(400).json({ error: 'Cannot delete Default playlist' });
+    deletePlaylist(req.params.id);
     res.json({ ok: true });
 });
 
 // ── Channels API ──────────────────────────────────────────────────────────────
 
-app.get('/api/channels', (req, res) => {
-    const pid = req.query.playlist_id;
-    res.json(pid ? stmt.channelsByList.all(pid) : stmt.allChannels.all());
-});
+app.get('/api/channels', (req, res) => res.json(getChannels(req.query.playlist_id)));
 
 app.put('/api/channels/:id', (req, res) => {
     const { name, url, logo = '', group = 'General', tvg_id = '' } = req.body || {};
     if (!name || !url) return res.status(400).json({ error: 'name and url required' });
-    stmt.updateChannel.run(name, url, logo, group, tvg_id, req.params.id);
+    updateChannel(req.params.id, { name, url, logo, group, tvg_id });
     res.json({ ok: true });
 });
 
 app.delete('/api/channels/:id', (req, res) => {
-    stmt.deleteChannel.run(req.params.id);
+    deleteChannel(req.params.id);
     res.json({ ok: true });
 });
 
@@ -384,8 +415,7 @@ app.post('/api/upload', (req, res) => {
     const finish = (content) => {
         const { channels, epgUrl } = parseM3U(content);
         if (!channels.length) return res.status(400).json({ success: false, message: 'No valid M3U streams found.' });
-        // Store epg_url on playlist if found
-        if (epgUrl) db.prepare(`UPDATE playlists SET epg_url=? WHERE id=?`).run(epgUrl, playlistId);
+        if (epgUrl) updatePlaylistEpg(playlistId, epgUrl);
         saveChannels(channels, playlistId, append);
         res.json({ success: true, message: `Parsed ${channels.length} streams.`, epgUrl });
     };
