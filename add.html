@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Playlist | GridStream</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="uploader-body">
+
+    <div class="uploader-container">
+        <!-- Logo / Back to home -->
+        <div class="uploader-header">
+            <a href="/" class="back-home-link"><i class="fa-solid fa-arrow-left"></i> Home</a>
+            <div class="brand">
+                <i class="fa-solid fa-flag-checkered logo-icon"></i>
+                <h2>Grid<span>Stream</span></h2>
+            </div>
+            <p class="subtitle">Import F1 Stream Playlist (.m3u / .m3u8)</p>
+        </div>
+
+        <!-- Append Checkbox Option -->
+        <div class="option-row" style="margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <input type="checkbox" id="append-checkbox" style="width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer;">
+            <label for="append-checkbox" style="font-size: 0.85rem; color: var(--text-muted); cursor: pointer; user-select: none;">Keep existing channels (append playlist)</label>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div id="drop-zone" class="drop-zone">
+            <div class="drop-zone-content">
+                <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                <h3>Drag & Drop your playlist here</h3>
+                <p>or click to browse local files</p>
+                <input type="file" id="file-input" accept=".m3u,.m3u8,.txt" style="display: none;">
+            </div>
+            
+            <!-- Dynamic uploader states -->
+            <div id="upload-progress-container" class="upload-progress-container hidden">
+                <div class="tachometer-loader">
+                    <i class="fa-solid fa-gauge-high spin-gauge"></i>
+                </div>
+                <h4 id="progress-status">Parsing stream list...</h4>
+                <div class="progress-bar-wrapper">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Status/Error Feedback -->
+        <div id="status-feedback" class="status-feedback hidden">
+            <p></p>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const progressContainer = document.getElementById('upload-progress-container');
+        const progressStatus = document.getElementById('progress-status');
+        const progressBar = document.getElementById('progress-bar');
+        const statusFeedback = document.getElementById('status-feedback');
+        const dropZoneContent = document.querySelector('.drop-zone-content');
+
+        // Drag events
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            const appendChecked = document.getElementById('append-checkbox').checked;
+            
+            // Hide content and show uploader details
+            dropZoneContent.classList.add('hidden');
+            progressContainer.classList.remove('hidden');
+            statusFeedback.classList.add('hidden');
+            
+            progressBar.style.width = '30%';
+            progressStatus.innerText = `Uploading '${file.name}'...`;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            progressBar.style.width = '60%';
+            progressStatus.innerText = 'Parsing channels on the server...';
+
+            fetch('/api/upload?append=' + (appendChecked ? 'true' : 'false'), {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                progressBar.style.width = '100%';
+                if (data.success) {
+                    progressStatus.innerText = 'Grid Loaded! Shifting gears...';
+                    statusFeedback.className = "status-feedback success";
+                    statusFeedback.querySelector('p').innerText = data.message;
+                    statusFeedback.classList.remove('hidden');
+                    
+                    // Redirect to home page
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 1500);
+                } else {
+                    throw new Error(data.message || 'Unknown error occurred.');
+                }
+            })
+            .catch(err => {
+                progressBar.style.width = '0%';
+                dropZoneContent.classList.remove('hidden');
+                progressContainer.classList.add('hidden');
+                
+                statusFeedback.className = "status-feedback error";
+                statusFeedback.querySelector('p').innerText = err.message;
+                statusFeedback.classList.remove('hidden');
+            });
+        }
+    </script>
+</body>
+</html>
