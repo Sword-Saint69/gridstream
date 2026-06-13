@@ -308,17 +308,14 @@ function renderChannels(channels) {
             btn.dataset.channelId = ch.id;
             if (state.activeChannel?.id === ch.id) btn.classList.add('active');
 
-            const logoHtml = `<div style="width:24px;height:24px;border-radius:4px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:800;color:var(--text-muted);">TV</div>`;
-
             btn.innerHTML = `
-                ${logoHtml}
-                <div class="opt-details" style="flex:1;min-width:0;">
-                    <span class="opt-title ch-name" style="font-size:0.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">${escapeHTML(ch.name)}</span>
-                    <span class="opt-desc" style="font-size:0.65rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;opacity:0.5;">${escapeHTML(ch.group || '')}</span>
+                <div class="opt-details">
+                    <span class="ch-name">${escapeHTML(ch.name)}</span>
+                    <span class="ch-group">${escapeHTML(ch.group || '')}</span>
                 </div>
-                <div class="ch-actions" style="display:flex;gap:4px;flex-shrink:0;">
-                    <span class="ch-edit-btn" title="Edit" style="font-size:0.7rem;opacity:0.5;padding:2px 4px;cursor:pointer;">✏️</span>
-                    <span class="ch-del-btn"  title="Delete" style="font-size:0.7rem;opacity:0.5;padding:2px 4px;cursor:pointer;">🗑</span>
+                <div class="ch-actions">
+                    <span class="ch-edit-btn" title="Edit">✏</span>
+                    <span class="ch-del-btn"  title="Delete">✕</span>
                 </div>`;
 
             btn.querySelector('.ch-del-btn').addEventListener('click', async (e) => {

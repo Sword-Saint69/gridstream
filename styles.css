@@ -406,52 +406,62 @@ h1, h2, h3, .stream-title, .stat-res-badge {
 .channel-options {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 2px;
 }
 
 .channel-opt-btn {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-md);
-    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 10px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 0;
     width: 100%;
     text-align: left;
     cursor: pointer;
-    transition: var(--transition-fast);
+    transition: background 0.15s;
 }
 
 .channel-opt-btn:hover {
-    background: var(--bg-card-hover);
-    border-color: var(--primary);
-    box-shadow: 0 4px 15px rgba(225, 6, 0, 0.1);
-    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .channel-opt-btn.active {
-    background: rgba(225, 6, 0, 0.05);
-    border-color: var(--primary);
-    box-shadow: 0 0 15px var(--primary-glow);
+    background: rgba(225, 6, 0, 0.08);
+}
+
+.channel-opt-btn.active .ch-name {
+    color: var(--primary);
 }
 
 .opt-details {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     min-width: 0;
 }
 
-.opt-title {
-    font-size: 0.85rem;
-    font-weight: 700;
+.ch-name {
+    font-size: 0.82rem;
+    font-weight: 500;
     color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    transition: color 0.15s;
 }
 
-.opt-desc {
+.ch-group {
     font-size: 0.65rem;
-    color: var(--text-muted);
-    margin-top: 2px;
+    color: var(--text-inactive);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    margin-top: 1px;
 }
 
 #channel-search {
@@ -688,19 +698,34 @@ h1, h2, h3, .stream-title, .stat-res-badge {
 
 /* ── Channel group header ── */
 .channel-group-header {
-    font-size: 0.7rem;
-    font-weight: 800;
-    color: var(--primary);
-    padding: 10px 5px 5px 5px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: var(--text-inactive);
+    padding: 12px 10px 4px;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    margin-bottom: 6px;
+    letter-spacing: 1.2px;
 }
 
 /* ── Channel action buttons ── */
-.ch-actions { opacity: 0; transition: opacity 0.15s; }
+.ch-actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+    margin-left: 6px;
+}
 .channel-opt-btn:hover .ch-actions { opacity: 1; }
+.ch-edit-btn, .ch-del-btn {
+    font-size: 0.7rem;
+    padding: 3px 5px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: background 0.1s, color 0.1s;
+}
+.ch-edit-btn:hover { background: rgba(255,255,255,0.08); color: var(--text-main); }
+.ch-del-btn:hover  { background: rgba(225,6,0,0.15); color: var(--primary); }
 
 /* Animations */
 @keyframes pulse {
